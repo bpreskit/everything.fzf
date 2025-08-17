@@ -37,8 +37,8 @@ gemfile do
   gem 'ansi256'
 end
 
-# Chrome fzf integration
-module ChromeFzf
+# Brave fzf integration
+module BraveFzf
   extend self
 
   # Platform-specific constants.
@@ -46,11 +46,11 @@ module ChromeFzf
   BASE_PATH, OPEN_COMMAND, CLIP_COMMAND, FOCUS_COMMAND =
     case RbConfig::CONFIG['host_os']
     when /darwin/
-      ['Library/Application Support/Google/Chrome', 'open {+2}', 'echo -n {+2} | pbcopy', DATA.read]
+      ['Library/Application Support/Google/Brave', 'open {+2}', 'echo -n {+2} | pbcopy', DATA.read]
     when /linux/
       ['.config/BraveSoftware/Brave-Browser', 'xdg-open {+2}', 'echo -n {+2} | xsel --clipboard --input', '']
     else
-      ['AppData\Local\Google\Chrome\User Data', 'start {+2}', 'echo {+2} | clip', '']
+      ['AppData\Local\Google\Brave\User Data', 'start {+2}', 'echo {+2} | clip', '']
     end
 
   DELIMITER = "\a"
@@ -80,24 +80,24 @@ module ChromeFzf
       fzf --ansi --read0 #{'--multi' unless name == :tabs} --info inline-right --reverse --scheme history \\
           --header-border --gap \\
           --highlight-line --height 100% --wrap --wrap-sign ' ↳ ' \\
-          --border --border-label " Chrome::#{name.capitalize} " --delimiter "#{DELIMITER}" \\
-          --header '╱ CTRL-T: Tabs ╱ CTRL-H: History ╱ CTRL-B: Bookmarks ╱ CTRL-Y: Copy to clipboard ╱' \\
+          --border --border-label " Brave::#{name.capitalize} " --delimiter "#{DELIMITER}" \\
+          --header '╱ CTRL-T: Tabs ╱ CTRL-H: History ╱ CTRL-B: Bookmarks || CTRL-Y: Copy to clipboard ╱ CTRL-W: Close tabs ╱' \\
           --with-shell 'bash -c' \\
-          --with-nth "{1}\n · {2}\n · {3}\n · {4}" \\
+          --with-nth "{1}\n · {2}" \\
           --bind 'enter:execute-silent(
-                    if [[ {4} ]]; then
-                      curl -s -X POST http://localhost:9229/json/activate/{4} > /dev/null
+                    if [[ {3} ]]; then
+                      curl -s -X POST http://localhost:9229/json/activate/{3} > /dev/null
                       #{FOCUS_COMMAND}
                     else
                       #{OPEN_COMMAND}
                     fi)+deselect-all' \\
           --bind 'ctrl-y:execute-silent(#{CLIP_COMMAND})+bell+deselect-all' \\
-          --bind 'ctrl-b:reload(ruby #{__FILE__.shellescape} --list b)+change-multi+change-border-label( Chrome::Bookmarks )+top' \\
-          --bind 'ctrl-t:reload(ruby #{__FILE__.shellescape} --list t)+change-multi(0)+change-border-label( Chrome::Tabs )+top' \\
-          --bind 'ctrl-h:reload(ruby #{__FILE__.shellescape} --list h)+change-multi+change-border-label( Chrome::History )+top' \\
+          --bind 'ctrl-b:reload(ruby #{__FILE__.shellescape} --list b)+change-multi+change-border-label( Brave::Bookmarks )+top' \\
+          --bind 'ctrl-t:reload(ruby #{__FILE__.shellescape} --list t)+change-multi(0)+change-border-label( Brave::Tabs )+top' \\
+          --bind 'ctrl-h:reload(ruby #{__FILE__.shellescape} --list h)+change-multi+change-border-label( Brave::History )+top' \\
           --bind 'ctrl-w:transform:
                   [[ $FZF_BORDER_LABEL =~ Tabs ]] || exit
-                  curl -s -X POST http://localhost:9229/json/close/{4} > /dev/null
+                  curl -s -X POST http://localhost:9229/json/close/{3} > /dev/null
                   echo "reload:ruby #{__FILE__.shellescape} --list t"
           '
     CMD
@@ -116,7 +116,7 @@ module ChromeFzf
   end
 
   def history
-    Tempfile.create('chrome') do |temp|
+    Tempfile.create('brave') do |temp|
       temp.close
       FileUtils.cp(path('History'), temp.path)
       SQLite3::Database.open(temp.path) do |db|
@@ -148,7 +148,7 @@ module ChromeFzf
 
   def tabs
     begin
-      # Get list of tabs from Chrome DevTools Protocol
+      # Get list of tabs from Brave DevTools Protocol
       uri = URI('http://localhost:9229/json')
       response = Net::HTTP.get_response(uri)
 
@@ -160,15 +160,17 @@ module ChromeFzf
 
       tabs_data = JSON.parse(response.body)
 
-      tabs_data.filter_map.with_index do |tab, idx|
-        # Only include pages (not extensions, devtools, etc.)
-        next unless tab['type'] == 'page'
+      # Filter for pages only, then map with proper indexing
+      page_tabs = tabs_data.select { |tab| tab['type'] == 'page' }
 
+      page_tabs.map.with_index do |tab, idx|
         title = tab['title'] || 'Untitled'
         url = tab['url'] || ''
-        tab_id = tab['id'] || idx.to_s
+        tab_id = tab['id']
+        # Use current timestamp since we don't have tab creation time
+        timestamp = Time.now.to_i
 
-        [title, url, idx.succ.to_s, tab_id]
+        [title, url, timestamp, tab_id]
       end
     rescue => e
       $stderr.puts "Error connecting to Brave debugger: #{e.message}"
@@ -181,7 +183,7 @@ module ChromeFzf
     time.to_i / 1_000_000 - 11_644_473_600
   end
 
-  # Helper method for Chrome DevTools Protocol API calls
+  # Helper method for Brave DevTools Protocol API calls
   def devtools_request(endpoint, method = 'GET')
     uri = URI("http://localhost:9229/json/#{endpoint}")
     http = Net::HTTP.new(uri.host, uri.port)
@@ -209,12 +211,12 @@ type = case ARGV[0]&.downcase
        else abort "Usage: #{__FILE__} [t|h|b]"
        end
 
-ChromeFzf.send(method, type)
+BraveFzf.send(method, type)
 
 __END__
 osascript << EOF
 tell application "System Events"
-  tell process "Chrome"
+  tell process "Brave"
     set frontmost to true
   end tell
 end tell
