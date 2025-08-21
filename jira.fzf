@@ -64,6 +64,9 @@ class JiraFzf
       opts.on('--no-color', 'Disable colored output') do
         @options[:color] = false
       end
+      opts.on('--debug', 'Debug mode - show raw API response') do
+        @options[:debug] = true
+      end
       opts.parse!
       abort(opts.help) if ARGV.length < (@options[:print] ? 1 : 2)
     end
@@ -92,7 +95,12 @@ class JiraFzf
       print_issue(issue)
       puts SEPARATOR
       print_comments(issue)
+    elsif @options[:debug]
+      debug_search
     else
+      # Pre-flight check: test the query before launching fzf
+      preflight_check
+
       Open3.popen2(fzf) do |stdin, _stdout|
         $stdout = stdin
         search
@@ -107,12 +115,68 @@ class JiraFzf
       jql: @jql,
       fields: %w[summary status creator assignee description created updated]
     }
+
+    issue_count = 0
     paged('/rest/api/2/search', params) do |result|
+      # Check if this is the first page and there are no issues (valid but empty result)
+      if issue_count == 0 && result[:issues].empty?
+        puts "No issues found for JQL: #{@jql}"
+        exit 0
+      end
+
       result[:issues].each do |issue|
+        issue_count += 1
         print_issue_formatted(issue, head: @options[:lines])
         print "\x0"
       end
     end
+  end
+
+  def preflight_check
+    params = {
+      jql: @jql,
+      fields: %w[summary status creator assignee description created updated],
+      startAt: 0,
+      maxResults: 1  # Just check the first result to validate the query
+    }
+
+    result = get_path('/rest/api/2/search', params)
+
+    # Check for API errors
+    if result[:errorMessages] && !result[:errorMessages].empty?
+      $stderr.puts "Jira API Error:"
+      result[:errorMessages].each { |msg| $stderr.puts "  #{msg}" }
+      exit 1
+    end
+
+    if result[:errors] && !result[:errors].empty?
+      $stderr.puts "Jira Field Errors:"
+      result[:errors].each { |field, msg| $stderr.puts "  #{field}: #{msg}" }
+      exit 1
+    end
+
+    # Check if no issues found
+    if result[:issues] && result[:issues].empty? && result[:total] == 0
+      puts "No issues found for JQL: #{@jql}"
+      exit 0
+    end
+  end
+
+  def debug_search
+    params = {
+      jql: @jql,
+      fields: %w[summary status creator assignee description created updated]
+    }
+    puts "=== DEBUG MODE ==="
+    puts "URL: #{@url}"
+    puts "JQL: #{@jql}"
+    puts "Params: #{params.inspect}"
+    puts "Headers: #{@headers.inspect}"
+    puts
+
+    result = get_path('/rest/api/2/search', params)
+    puts "=== RAW API RESPONSE ==="
+    puts JSON.pretty_generate(result)
   end
 
   def print_issue(id)
@@ -194,7 +258,8 @@ class JiraFzf
     params[:maxResults] ||= [@options[:limit], 100].min
 
     loop do
-      result = get_path(path, params).tap { yield(it) }
+      result = get_path(path, params)
+      yield(result)
       params[:startAt] += params[:maxResults]
       break if params[:startAt] >= [result[:total], @options[:limit]].min
     rescue Errno::EPIPE
