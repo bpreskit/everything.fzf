@@ -208,15 +208,16 @@ class JiraFzf
           --highlight-line --height 100% --wrap --wrap-sign '  ↳ ' \\
           --gap --border --border-label " "#{@jql.shellescape}" " \\
           --tiebreak begin \\
-          --header '╱ CTRL-Y: Copy to clipboard ╱ CTRL-V: View ╱ CTRL-/: Toggle preview ╱' \\
+          --header '╱ ALT-W: Copy to clipboard ╱ CTRL-V: View ╱ CTRL-/: Toggle preview ╱' \\
           --header-border bottom \\
           --query #{@options[:query].shellescape} \\
           --preview-window hidden,wrap \\
           --preview 'ruby #{__FILE__.shellescape} #{auth} #{@url} --print={1}' \\
           --bind ctrl-/:toggle-preview \\
-          --bind 'enter:execute-silent(for key in {+1}; do open #{@url}/browse/$key; done)+clear-selection' \\
-          --bind 'ctrl-y:execute-silent(echo -n {+1} | pbcopy)+clear-selection+bell' \\
-          --bind 'ctrl-v:execute:ruby #{__FILE__.shellescape} #{auth} #{@url} --print={1} --no-color | view - --not-a-term +"setf jira"' \\
+          --bind 'enter:execute-silent(for key in {+1}; do open #{@url}/browse/$key; done)+abort' \\
+          --bind 'alt-enter:execute-silent(for key in {+1}; do open #{@url}/browse/$key; done)+clear-selection' \\
+          --bind 'alt-w:execute-silent(echo -n {+1} | pbcopy)+clear-selection+bell' \\
+          --bind 'ctrl-v:execute:ruby #{__FILE__.shellescape} #{auth} #{@url} --print={1} --no-color | pandoc -f jira -t org | bat --language org --style=plain --paging=always' \\
           --bind 'click-header:transform:
             [[ $FZF_CLICK_HEADER_WORD =~ CTRL ]] && echo "trigger(${FZF_CLICK_HEADER_WORD%:})"
           ' \\
