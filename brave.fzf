@@ -262,9 +262,9 @@ end
 
 method = ARGV.delete('--list') ? :list : :run
 type = case ARGV[0]&.downcase
-       when 'h' then :history
+       when 'h', nil then :history
        when 'b' then :bookmarks
-       when 't', nil then :tabs
+       when 't' then :tabs
        else abort "Usage: #{__FILE__} [t|h|b]"
        end
 
