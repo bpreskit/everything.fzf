@@ -258,8 +258,7 @@ class JiraFzf
     params[:maxResults] ||= [@options[:limit], 100].min
 
     loop do
-      result = get_path(path, params)
-      yield(result)
+      result = get_path(path, params).tap { yield(it) }
       params[:startAt] += params[:maxResults]
       break if params[:startAt] >= [result[:total], @options[:limit]].min
     rescue Errno::EPIPE
