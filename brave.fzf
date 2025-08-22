@@ -28,8 +28,7 @@ require 'rbconfig'
 require 'tempfile'
 require 'json'
 require 'shellwords'
-require 'net/http'
-require 'uri'
+require 'socket'
 
 gemfile do
   source 'https://rubygems.org'
@@ -85,8 +84,8 @@ module BraveFzf
           --with-shell 'bash -c' \\
           --with-nth "{1}\n · {2}" \\
           --bind 'enter:execute-silent(
-                    if [[ {3} ]]; then
-                      curl -s -X POST http://localhost:9229/json/activate/{3} > /dev/null
+                    if [[ {4} ]]; then
+                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"{4}\\"}}\\0" $RANDOM | nc -q 0 -U /run/user/$UID/brave/brave.sock > /dev/null
                       #{FOCUS_COMMAND}
                     else
                       #{OPEN_COMMAND}
@@ -97,7 +96,7 @@ module BraveFzf
           --bind 'ctrl-h:reload(ruby #{__FILE__.shellescape} --list h)+change-multi+change-border-label( Brave::History )+top' \\
           --bind 'ctrl-w:transform:
                   [[ $FZF_BORDER_LABEL =~ Tabs ]] || exit
-                  curl -s -X POST http://localhost:9229/json/close/{3} > /dev/null
+                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"{4}\\"}}\\0" $RANDOM | nc -q 0 -U /run/user/$UID/brave/brave.sock > /dev/null
                   echo "reload:ruby #{__FILE__.shellescape} --list t"
           '
     CMD
@@ -147,40 +146,98 @@ module BraveFzf
   end
 
   def tabs
+    # Get list of tabs from Brave DevTools Protocol via Unix socket using shell command
+    socket_path = "/run/user/#{Process.uid}/brave/brave.sock"
+
+    unless File.exist?(socket_path)
+      $stderr.puts "Error: Brave socket not found at #{socket_path}"
+      return []
+    end
+
     begin
-      # Get list of tabs from Brave DevTools Protocol
-      uri = URI('http://localhost:9229/json')
-      response = Net::HTTP.get_response(uri)
+      # Use shell command since that works reliably
+      response_json = `printf '{"id": %d, "method": "Target.getTargets"}\\0' #{rand(1000000)} | nc -q 0 -U #{socket_path.shellescape}`.strip
 
-      unless response.is_a?(Net::HTTPSuccess)
-        $stderr.puts "Error: Could not connect to Brave debugger on localhost:9229"
-        $stderr.puts "Make sure Brave is running with --remote-debugging-port=9229"
-        return []
-      end
+      # Remove null byte if present
+      response_json = response_json.chomp("\0")
 
-      tabs_data = JSON.parse(response.body)
+      return [] if response_json.empty?
 
-      # Filter for pages only, then map with proper indexing
-      page_tabs = tabs_data.select { |tab| tab['type'] == 'page' }
+      response = JSON.parse(response_json)
+      targets = response['result']['targetInfos'] || []
 
-      page_tabs.map.with_index do |tab, idx|
-        title = tab['title'] || 'Untitled'
-        url = tab['url'] || ''
-        tab_id = tab['id']
+      # Filter for page targets only, then map with proper indexing
+      page_targets = targets.select { |target| target['type'] == 'page' }
+
+      page_targets.map.with_index do |target, idx|
+        title = target['title'] || 'Untitled'
+        url = target['url'] || ''
+        target_id = target['targetId']
         # Use current timestamp since we don't have tab creation time
         timestamp = Time.now.to_i
 
-        [title, url, timestamp, tab_id]
+        [title, url, timestamp, target_id]
       end
     rescue => e
-      $stderr.puts "Error connecting to Brave debugger: #{e.message}"
-      $stderr.puts "Make sure Brave is running with --remote-debugging-port=9229"
+      $stderr.puts "Error getting tabs: #{e.message}"
       []
     end
   end
 
   def to_unix(time)
     time.to_i / 1_000_000 - 11_644_473_600
+  end
+
+  # Helper method for Brave DevTools Protocol via Unix socket
+  def brave_socket_request(method, params = {})
+    socket_path = "/run/user/#{Process.uid}/brave/brave.sock"
+
+    unless File.exist?(socket_path)
+      $stderr.puts "Error: Brave socket not found at #{socket_path}"
+      $stderr.puts "Make sure Brave is running with debugging enabled"
+      return nil
+    end
+
+    request = {
+      id: rand(1000000),
+      method: method,
+      params: params
+    }
+
+    begin
+      socket = UNIXSocket.new(socket_path)
+      socket.write(request.to_json + "\0")
+
+      # Read until we get a complete JSON response
+      response_data = ""
+      loop do
+        chunk = socket.read_nonblock(1024)
+        response_data += chunk
+
+        # Check if we have a complete response (ends with null byte)
+        if response_data.include?("\0")
+          break
+        end
+      rescue IO::WaitReadable
+        # Wait for data to be available
+        IO.select([socket])
+        retry
+      rescue EOFError
+        break
+      end
+
+      socket.close
+
+      # Remove null terminator and parse JSON
+      response_json = response_data.chomp("\0")
+      return nil if response_json.empty?
+
+      JSON.parse(response_json)
+    rescue => e
+      $stderr.puts "Error communicating with Brave: #{e.message}"
+      $stderr.puts "Response data: #{response_data.inspect}" if defined?(response_data)
+      nil
+    end
   end
 
   # Helper method for Brave DevTools Protocol API calls
