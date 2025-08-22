@@ -203,12 +203,16 @@ class JiraFzf
 
   def fzf
     auth = @options[:auth] ? " -u #{@options[:auth].shellescape}" : ''
+    # Write JQL to temp file to avoid shell escaping issues
+    jql_file = "/tmp/jira_fzf_jql_#{Process.pid}"
+    File.write(jql_file, @jql)
+
     <<~CMD
       fzf --ansi --read0 --multi --info inline-right --reverse --scheme history \\
           --highlight-line --height 100% --wrap --wrap-sign '  ↳ ' \\
           --gap --border --border-label " "#{@jql.shellescape}" " \\
           --tiebreak begin \\
-          --header '╱ ALT-W: Copy to clipboard ╱ CTRL-V: View ╱ CTRL-/: Toggle preview ╱' \\
+          --header '╱ ALT-W: Copy to clipboard ╱ CTRL-V: View ╱ CTRL-/: Toggle preview ╱ CTRL-Q: Change query ╱' \\
           --header-border bottom \\
           --query #{@options[:query].shellescape} \\
           --preview-window hidden,wrap \\
@@ -218,6 +222,14 @@ class JiraFzf
           --bind 'alt-enter:execute-silent(for key in {+1}; do open #{@url}/browse/$key; done)+clear-selection' \\
           --bind 'alt-w:execute-silent(echo -n {+1} | pbcopy)+clear-selection+bell' \\
           --bind 'ctrl-v:execute:ruby #{__FILE__.shellescape} #{auth} #{@url} --print={1} --no-color | pandoc -f jira -t org | bat --language org --style=plain --paging=always' \\
+          --bind 'ctrl-q:execute(bash -c "
+            current_jql=\\$(cat #{jql_file.shellescape})
+            echo -n \\\"JQL: \\\"
+            read -e -i \\\"\\$current_jql\\\" new_jql
+            if [[ -n \\\"\\$new_jql\\\" ]]; then
+              exec ruby #{__FILE__.shellescape} #{auth} #{@url.shellescape} \\\"\\$new_jql\\\"
+            fi
+          ")+abort' \\
           --bind 'click-header:transform:
             [[ $FZF_CLICK_HEADER_WORD =~ CTRL ]] && echo "trigger(${FZF_CLICK_HEADER_WORD%:})"
           ' \\
