@@ -30,6 +30,7 @@ require 'json'
 require 'net/http'
 require 'open3'
 require 'shellwords'
+require 'tempfile'
 
 gemfile do
   source 'https://rubygems.org'
@@ -44,6 +45,7 @@ class JiraFzf
 
   def initialize
     @options = { lines: 10, limit: 1000, query: '', color: true }
+    @jql_tempfile = nil
     OptionParser.new do |opts|
       opts.banner = "Usage: #{$PROGRAM_NAME} URL [JQL|PROJECT...]"
       opts.on('-u', '--user={USER:PASSWORD,PAT}', 'User name and password (user:password) or PAT') do |v|
@@ -203,9 +205,10 @@ class JiraFzf
 
   def fzf
     auth = @options[:auth] ? " -u #{@options[:auth].shellescape}" : ''
-    # Write JQL to temp file to avoid shell escaping issues
-    jql_file = "/tmp/jira_fzf_jql_#{Process.pid}"
-    File.write(jql_file, @jql)
+    # Use Ruby's Tempfile for clean, automatic cleanup
+    @jql_tempfile = Tempfile.new('jira_fzf_jql')
+    @jql_tempfile.write(@jql)
+    @jql_tempfile.close
 
     <<~CMD
       fzf --ansi --read0 --multi --info inline-right --reverse --scheme history \\
@@ -223,7 +226,7 @@ class JiraFzf
           --bind 'alt-w:execute-silent(echo -n {+1} | pbcopy)+clear-selection+bell' \\
           --bind 'ctrl-v:execute:ruby #{__FILE__.shellescape} #{auth} #{@url} --print={1} --no-color | pandoc -f jira -t org | bat --language org --style=plain --paging=always' \\
           --bind 'ctrl-q:execute(bash -c "
-            current_jql=\\$(cat #{jql_file.shellescape})
+            current_jql=\\$(cat #{@jql_tempfile.path.shellescape})
             echo -n \\\"JQL: \\\"
             read -e -i \\\"\\$current_jql\\\" new_jql
             if [[ -n \\\"\\$new_jql\\\" ]]; then
