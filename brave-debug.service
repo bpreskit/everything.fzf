@@ -1,0 +1,47 @@
+[Unit]
+Description=Brave Browser Remote Debugging Service
+Documentation=man:brave-browser(1)
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=forking
+User=%i
+Group=%i
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/%i
+
+# Use the script we created to manage the Brave debugging setup
+ExecStart=/home/%i/source_code/everything.fzf/start-brave-debug.sh start
+ExecStop=/home/%i/source_code/everything.fzf/start-brave-debug.sh stop
+ExecReload=/home/%i/source_code/everything.fzf/start-brave-debug.sh restart
+
+# Process management
+PIDFile=/run/user/%i/brave/brave.pid
+RemainAfterExit=yes
+KillMode=mixed
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security and resource limits
+PrivateNetwork=false
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/run/user/%i/brave /tmp /home/%i/.config /home/%i/.cache
+NoNewPrivileges=false
+MemoryMax=2G
+CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brave-debug
+
+[Install]
+WantedBy=default.target
