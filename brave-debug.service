@@ -6,18 +6,15 @@ Wants=graphical-session.target
 
 [Service]
 Type=forking
-User=%i
-Group=%i
 Environment=DISPLAY=:0
-Environment=XDG_RUNTIME_DIR=/run/user/%i
 
 # Use the script we created to manage the Brave debugging setup
-ExecStart=/home/%i/source_code/everything.fzf/start-brave-debug.sh start
-ExecStop=/home/%i/source_code/everything.fzf/start-brave-debug.sh stop
-ExecReload=/home/%i/source_code/everything.fzf/start-brave-debug.sh restart
+ExecStart=%h/source_code/everything.fzf/start-brave-debug.sh start
+ExecStop=%h/source_code/everything.fzf/start-brave-debug.sh stop
+ExecReload=%h/source_code/everything.fzf/start-brave-debug.sh restart
 
 # Process management
-PIDFile=/run/user/%i/brave/brave.pid
+PIDFile=%t/brave/brave.pid
 RemainAfterExit=yes
 KillMode=mixed
 TimeoutStartSec=30
@@ -33,7 +30,7 @@ StartLimitBurst=3
 PrivateNetwork=false
 ProtectSystem=strict
 ProtectHome=false
-ReadWritePaths=/run/user/%i/brave /tmp /home/%i/.config /home/%i/.cache
+ReadWritePaths=%t/brave %T %h/.config %h/.cache
 NoNewPrivileges=false
 MemoryMax=2G
 CPUQuota=200%

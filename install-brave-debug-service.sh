@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-SERVICE_NAME="brave-debug@$USER.service"
+SERVICE_NAME="brave-debug.service"
 SERVICE_FILE="brave-debug.service"
 SCRIPT_PATH="$(pwd)/start-brave-debug.sh"
 USER_SERVICE_DIR="$HOME/.config/systemd/user"
@@ -26,7 +26,7 @@ install_service() {
     mkdir -p "$USER_SERVICE_DIR"
     
     # Copy the service file, replacing the script path
-    sed "s|/home/%i/source_code/everything.fzf/start-brave-debug.sh|$SCRIPT_PATH|g" \
+    sed "s|%h/source_code/everything.fzf/start-brave-debug.sh|$SCRIPT_PATH|g" \
         "$SERVICE_FILE" > "$USER_SERVICE_DIR/$SERVICE_FILE"
     
     echo "Service file installed to: $USER_SERVICE_DIR/$SERVICE_FILE"
