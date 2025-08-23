@@ -155,7 +155,10 @@ module BraveFzf
     end
 
     begin
-      # Use nc with -w 1 for reliable response timing
+      # Flush any stale buffered responses first
+      `timeout 0.1 nc -U #{socket_path.shellescape} </dev/null 2>/dev/null || true`
+
+      # Now send the actual request with clean buffers
       response_json = `printf '{"id": %d, "method": "Target.getTargets"}\\0' #{rand(1000000)} | nc -U -w 1 #{socket_path.shellescape}`.strip
 
       # Handle multiple responses separated by null bytes - take the first one
