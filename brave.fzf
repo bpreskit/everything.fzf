@@ -85,7 +85,7 @@ module BraveFzf
           --with-nth "{1}\n · {2}" \\
           --bind 'enter:execute-silent(
                     if [[ {3} ]]; then
-                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"{3}\\"}}\\0" $RANDOM | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
+                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"%s\\"}}\\0" $RANDOM {3} | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
                       #{FOCUS_COMMAND}
                     else
                       #{OPEN_COMMAND}
