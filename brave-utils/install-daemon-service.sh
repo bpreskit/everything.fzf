@@ -12,33 +12,40 @@ USER_SERVICE_DIR="$HOME/.config/systemd/user"
 # Function to install the service
 install_service() {
     echo "Installing Brave debug daemon systemd service..."
-    
+
     # Check if scripts exist
     if [[ ! -f "$DAEMON_SCRIPT" ]]; then
         echo "Error: brave-debug-daemon.sh not found in current directory"
         exit 1
     fi
-    
+
     if [[ ! -f "$LAUNCH_SCRIPT" ]]; then
         echo "Error: brave-launch.sh not found in current directory"
         exit 1
     fi
-    
-    # Make scripts executable
-    chmod +x "$DAEMON_SCRIPT" "$LAUNCH_SCRIPT"
-    
+
+    # Create ~/.local/bin if it doesn't exist
+    mkdir -p "$HOME/.local/bin"
+
+    # Copy scripts to ~/.local/bin
+    echo "Installing scripts to ~/.local/bin..."
+    cp "$DAEMON_SCRIPT" "$HOME/.local/bin/"
+    cp "$LAUNCH_SCRIPT" "$HOME/.local/bin/"
+    chmod +x "$HOME/.local/bin/brave-debug-daemon.sh"
+    chmod +x "$HOME/.local/bin/brave-launch.sh"
+
     # Create user systemd directory if it doesn't exist
     mkdir -p "$USER_SERVICE_DIR"
+
+    # Copy the service file (no path replacement needed now)
+    cp "$SERVICE_FILE" "$USER_SERVICE_DIR/$SERVICE_FILE"
     
-    # Copy the service file, replacing script paths
-    sed "s|%h/source_code/everything.fzf/brave-utils/brave-debug-daemon.sh|$DAEMON_SCRIPT|g" \
-        "$SERVICE_FILE" > "$USER_SERVICE_DIR/$SERVICE_FILE"
-    
+    echo "Scripts installed to: ~/.local/bin/"
     echo "Service file installed to: $USER_SERVICE_DIR/$SERVICE_FILE"
-    
+
     # Reload systemd user daemon
     systemctl --user daemon-reload
-    
+
     echo "Systemd user daemon reloaded"
     echo ""
     echo "To manage the daemon service:"
@@ -48,8 +55,10 @@ install_service() {
     echo "  systemctl --user enable $SERVICE_NAME  # Start on login"
     echo ""
     echo "To launch browsers:"
-    echo "  $LAUNCH_SCRIPT"
-    echo "  $LAUNCH_SCRIPT '' '' --new-window"
+    echo "  brave-launch.sh"
+    echo "  brave-launch.sh '' '' --new-window"
+    echo ""
+    echo "Note: Make sure ~/.local/bin is in your PATH"
 }
 
 # Function to uninstall the service
@@ -72,7 +81,18 @@ uninstall_service() {
         rm "$USER_SERVICE_DIR/$SERVICE_FILE"
         echo "Service file removed"
     fi
-    
+
+    # Remove scripts from ~/.local/bin
+    if [[ -f "$HOME/.local/bin/brave-debug-daemon.sh" ]]; then
+        rm "$HOME/.local/bin/brave-debug-daemon.sh"
+        echo "Removed brave-debug-daemon.sh from ~/.local/bin"
+    fi
+
+    if [[ -f "$HOME/.local/bin/brave-launch.sh" ]]; then
+        rm "$HOME/.local/bin/brave-launch.sh"
+        echo "Removed brave-launch.sh from ~/.local/bin"
+    fi
+
     # Reload systemd
     systemctl --user daemon-reload
     echo "Systemd user daemon reloaded"
@@ -119,7 +139,7 @@ test_setup() {
     echo "✓ Daemon service is running"
     
     # Test the daemon directly
-    if "$DAEMON_SCRIPT" status | grep -q "Daemon running"; then
+    if "$HOME/.local/bin/brave-debug-daemon.sh" status | grep -q "Daemon running"; then
         echo "✓ Daemon is responsive"
     else
         echo "❌ Daemon is not responsive"
@@ -137,7 +157,7 @@ test_setup() {
     
     echo ""
     echo "✓ Setup is working correctly!"
-    echo "You can now launch browsers with: $LAUNCH_SCRIPT"
+    echo "You can now launch browsers with: brave-launch.sh"
 }
 
 # Main script logic

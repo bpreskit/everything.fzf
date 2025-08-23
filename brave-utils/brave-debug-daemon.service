@@ -9,8 +9,8 @@ Type=exec
 Environment=DISPLAY=:0
 
 # The daemon script handles everything
-ExecStart=%h/source_code/everything.fzf/brave-utils/brave-debug-daemon.sh start
-ExecStop=%h/source_code/everything.fzf/brave-utils/brave-debug-daemon.sh stop
+ExecStart=%h/.local/bin/brave-debug-daemon.sh start
+ExecStop=%h/.local/bin/brave-debug-daemon.sh stop
 
 # Process management
 PIDFile=%t/brave/daemon.pid
