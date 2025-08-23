@@ -68,12 +68,14 @@ start_daemon() {
     
     # Start the persistent bridge server
     # This is the core of the daemon - it keeps the pipes open
-    echo "Starting socat bridge..."
+    echo "Starting netcat bridge..."
 
-    # Use socat to create a bidirectional bridge between socket and stdio
-    # Then connect stdio to the FIFOs
-    # exec socat UNIX-LISTEN:"$SOCKET_PATH",fork,reuseaddr EXEC:"cat <$OUT_FIFO & cat >$IN_FIFO; wait"
-    exec nc -lUk "$SOCKET_PATH" >"$IN_FIFO" <"$OUT_FIFO"
+    # Open FIFOs in read/write mode to prevent blocking
+    exec 3<> "$IN_FIFO"   # Open for read/write
+    exec 4<> "$OUT_FIFO"  # Open for read/write
+
+    # Now nc won't block - it can start immediately
+    exec nc -lUk "$SOCKET_PATH" >&3 <&4
 }
 
 # Function to stop the daemon
