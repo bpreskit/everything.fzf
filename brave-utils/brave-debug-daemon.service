@@ -1,0 +1,37 @@
+[Unit]
+Description=Brave Debug Daemon - FIFO and Socket Infrastructure
+Documentation=file://%h/source_code/everything.fzf/brave-utils/README.md
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=exec
+Environment=DISPLAY=:0
+
+# The daemon script handles everything
+ExecStart=%h/source_code/everything.fzf/brave-utils/brave-debug-daemon.sh start
+ExecStop=%h/source_code/everything.fzf/brave-utils/brave-debug-daemon.sh stop
+
+# Process management
+PIDFile=%t/brave/daemon.pid
+KillMode=mixed
+TimeoutStartSec=10
+TimeoutStopSec=5
+
+# Restart policy - this is the key benefit of separating the daemon
+Restart=always
+RestartSec=2
+StartLimitInterval=60
+StartLimitBurst=5
+
+# Resource limits (very lightweight)
+MemoryMax=50M
+CPUQuota=10%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brave-debug-daemon
+
+[Install]
+WantedBy=default.target
