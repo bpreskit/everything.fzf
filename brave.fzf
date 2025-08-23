@@ -96,7 +96,7 @@ module BraveFzf
           --bind 'ctrl-h:reload(ruby #{__FILE__.shellescape} --list h)+change-multi+change-border-label( Brave::History )+top' \\
           --bind 'ctrl-w:transform:
                   [[ $FZF_BORDER_LABEL =~ Tabs ]] || exit
-                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"{3}\\"}}\\0" $RANDOM | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
+                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"%s\\"}}\\0" $RANDOM {3} | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
                   echo "reload:ruby #{__FILE__.shellescape} --list t"
           '
     CMD
