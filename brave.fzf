@@ -84,8 +84,8 @@ module BraveFzf
           --with-shell 'bash -c' \\
           --with-nth "{1}\n · {2}" \\
           --bind 'enter:execute-silent(
-                    if [[ {4} ]]; then
-                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"{4}\\"}}\\0" $RANDOM | nc -q 0 -U /run/user/$UID/brave/brave.sock > /dev/null
+                    if [[ {3} ]]; then
+                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"{3}\\"}}\\0" $RANDOM | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
                       #{FOCUS_COMMAND}
                     else
                       #{OPEN_COMMAND}
@@ -96,7 +96,7 @@ module BraveFzf
           --bind 'ctrl-h:reload(ruby #{__FILE__.shellescape} --list h)+change-multi+change-border-label( Brave::History )+top' \\
           --bind 'ctrl-w:transform:
                   [[ $FZF_BORDER_LABEL =~ Tabs ]] || exit
-                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"{4}\\"}}\\0" $RANDOM | nc -q 0 -U /run/user/$UID/brave/brave.sock > /dev/null
+                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"{3}\\"}}\\0" $RANDOM | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
                   echo "reload:ruby #{__FILE__.shellescape} --list t"
           '
     CMD
@@ -155,15 +155,27 @@ module BraveFzf
     end
 
     begin
-      # Use shell command since that works reliably
-      response_json = `printf '{"id": %d, "method": "Target.getTargets"}\\0' #{rand(1000000)} | nc -q 0 -U #{socket_path.shellescape}`.strip
+      # Use nc with -w 1 for reliable response timing
+      response_json = `printf '{"id": %d, "method": "Target.getTargets"}\\0' #{rand(1000000)} | nc -U -w 1 #{socket_path.shellescape}`.strip
 
-      # Remove null byte if present
-      response_json = response_json.chomp("\0")
+      # Handle multiple responses separated by null bytes - take the first one
+      response_json = response_json.split("\0").first || ""
 
       return [] if response_json.empty?
 
-      response = JSON.parse(response_json)
+      begin
+        response = JSON.parse(response_json)
+      rescue JSON::ParserError => e
+        $stderr.puts "Error parsing JSON: #{e.message}"
+        $stderr.puts "Raw response: #{response_json.inspect}"
+        return []
+      end
+
+      unless response && response['result']
+        $stderr.puts "Invalid response structure: #{response.inspect}"
+        return []
+      end
+
       targets = response['result']['targetInfos'] || []
 
       # Filter for page targets only, then map with proper indexing
