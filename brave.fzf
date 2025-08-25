@@ -85,7 +85,7 @@ module BraveFzf
           --with-nth "{1}\n · {2}" \\
           --bind 'enter:execute-silent(
                     if [[ {3} ]]; then
-                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"%s\\"}}\\0" $RANDOM {3} | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
+                      printf "{\\"id\\": %d, \\"method\\": \\"Target.activateTarget\\", \\"params\\": {\\"targetId\\": \\"%s\\"}}\\0" $RANDOM {3} | socat -t 0.2 - UNIX-CONNECT:/run/user/$UID/brave/brave.sock > /dev/null
                       #{FOCUS_COMMAND}
                     else
                       #{OPEN_COMMAND}
@@ -96,7 +96,7 @@ module BraveFzf
           --bind 'ctrl-h:reload(ruby #{__FILE__.shellescape} --list h)+change-multi+change-border-label( Brave::History )+top' \\
           --bind 'ctrl-w:transform:
                   [[ $FZF_BORDER_LABEL =~ Tabs ]] || exit
-                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"%s\\"}}\\0" $RANDOM {3} | nc -U -w 1 /run/user/$UID/brave/brave.sock > /dev/null
+                  printf "{\\"id\\": %d, \\"method\\": \\"Target.closeTarget\\", \\"params\\": {\\"targetId\\": \\"%s\\"}}\\0" $RANDOM {3} | socat -t 0.2 - UNIX-CONNECT:/run/user/$UID/brave/brave.sock > /dev/null
                   echo "reload:ruby #{__FILE__.shellescape} --list t"
           '
     CMD
@@ -155,31 +155,44 @@ module BraveFzf
     end
 
     begin
-      # Flush any stale buffered responses first
-      `timeout 0.1 nc -U #{socket_path.shellescape} </dev/null 2>/dev/null || true`
+      # Send request and handle potentially multiple buffered responses
+      request_id = rand(1000000)
+      response_json = `printf '{"id": %d, "method": "Target.getTargets"}\\0' #{request_id} | socat -t 0.2 - UNIX-CONNECT:#{socket_path.shellescape}`.strip
 
-      # Now send the actual request with clean buffers
-      response_json = `printf '{"id": %d, "method": "Target.getTargets"}\\0' #{rand(1000000)} | nc -U -w 1 #{socket_path.shellescape}`.strip
+      # Handle multiple responses separated by null bytes - find the one matching our request ID
+      responses = response_json.split("\0").reject(&:empty?)
 
-      # Handle multiple responses separated by null bytes - take the first one
-      response_json = response_json.split("\0").first || ""
+      return [] if responses.empty?
 
-      return [] if response_json.empty?
+      # Try to find a response that matches our request ID, or use the last valid one
+      target_response = nil
+      responses.each do |resp_json|
+        begin
+          parsed = JSON.parse(resp_json)
+          if parsed['id'] == request_id || parsed['result']&.key?('targetInfos')
+            target_response = parsed
+            break
+          end
+        rescue JSON::ParserError
+          next
+        end
+      end
 
-      begin
-        response = JSON.parse(response_json)
+      # If no matching response found, try the last response
+      target_response ||= begin
+        JSON.parse(responses.last)
       rescue JSON::ParserError => e
         $stderr.puts "Error parsing JSON: #{e.message}"
-        $stderr.puts "Raw response: #{response_json.inspect}"
+        $stderr.puts "Raw responses: #{responses.inspect}"
         return []
       end
 
-      unless response && response['result']
-        $stderr.puts "Invalid response structure: #{response.inspect}"
+      unless target_response && target_response['result']
+        $stderr.puts "Invalid response structure: #{target_response.inspect}"
         return []
       end
 
-      targets = response['result']['targetInfos'] || []
+      targets = target_response['result']['targetInfos'] || []
 
       # Filter for page targets only, then map with proper indexing
       page_targets = targets.select { |target| target['type'] == 'page' }
